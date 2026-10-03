@@ -186,6 +186,9 @@ function autoLayoutNodes(nodes, simulation, width, height, edges = null, treeFor
     simulation.alphaDecay(1);
     simulation.alphaTarget(0);
 
+    const getId = (n) => n.id !== undefined ? n.id : n.label || n.name;
+    const getEdgeId = (n) => typeof n === 'object' ? getId(n) : n;
+
     if (treeFor) {
         const getId = (n) => n.id !== undefined ? n.id : n.label || n.name;
         const getEdgeId = (n) => typeof n === 'object' ? getId(n) : n;
@@ -273,16 +276,107 @@ function autoLayoutNodes(nodes, simulation, width, height, edges = null, treeFor
         });
 
     } else {
+        const order = minimizeCrossingsCircularOrder(nodes, edges || [], getId, getEdgeId);
+        const n = nodes.length;
         const NODE_GAP = 200;
-        const totalWidth = nodes.reduce((sum, n) => sum + nodeRectWidth(n) + NODE_GAP, 0);
+        const totalWidth = nodes.reduce((sum, nd) => sum + nodeRectWidth(nd) + NODE_GAP, 0);
         const radius = Math.max(150, totalWidth / (2 * Math.PI));
-        const angleStep = (2 * Math.PI) / nodes.length;
+        const angleStep = (2 * Math.PI) / Math.max(1, n);
 
         nodes.forEach((node, index) => {
-            node.x = width / 2 + radius * Math.cos(index * angleStep);
-            node.y = height / 2 + radius * Math.sin(index * angleStep);
+            const slot = order[index];
+            node.x = width / 2 + radius * Math.cos(slot * angleStep);
+            node.y = height / 2 + radius * Math.sin(slot * angleStep);
         });
     }
+}
+
+function minimizeCrossingsCircularOrder(nodes, edges, getId, getEdgeId, iterations = 20000) {
+    const n = nodes.length;
+    if (n < 4 || edges.length === 0) return nodes.map((_, i) => i);
+
+    // Build index-based adjacency and a deduplicated, undirected edge list
+    const idx = new Map(nodes.map((nd, i) => [getId(nd), i]));
+    const adj = Array.from({ length: n }, () => []);
+    const E = [];
+    const seen = new Set();
+    edges.forEach(e => {
+        const a = idx.get(getEdgeId(e.source));
+        const b = idx.get(getEdgeId(e.target));
+        if (a === undefined || b === undefined || a === b) return;
+        const key = a < b ? `${a},${b}` : `${b},${a}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        E.push([a, b]);
+        adj[a].push(b);
+        adj[b].push(a);
+    });
+
+    // Initial ordering: BFS from high-degree nodes so neighbors start close together
+    const byDegree = [...Array(n).keys()].sort((x, y) => adj[y].length - adj[x].length);
+    const visited = new Array(n).fill(false);
+    const initial = [];
+    for (const s of byDegree) {
+        if (visited[s]) continue;
+        const queue = [s];
+        visited[s] = true;
+        while (queue.length) {
+            const u = queue.shift();
+            initial.push(u);
+            for (const w of adj[u]) {
+                if (!visited[w]) { visited[w] = true; queue.push(w); }
+            }
+        }
+    }
+
+    // pos[nodeIndex] = slot on the circle
+    const pos = new Array(n);
+    initial.forEach((node, slot) => { pos[node] = slot; });
+
+    // Two chords cross iff their endpoints strictly interleave around the circle
+    const countCrossings = () => {
+        let c = 0;
+        for (let i = 0; i < E.length; i++) {
+            let pa = pos[E[i][0]], pb = pos[E[i][1]];
+            if (pa > pb) [pa, pb] = [pb, pa];
+            for (let j = i + 1; j < E.length; j++) {
+                let pc = pos[E[j][0]], pd = pos[E[j][1]];
+                if (pc > pd) [pc, pd] = [pd, pc];
+                if ((pa < pc && pc < pb && pb < pd) || (pc < pa && pa < pd && pd < pb)) c++;
+            }
+        }
+        return c;
+    };
+
+    // Simulated annealing over pairwise swaps of circle positions
+    let current = countCrossings();
+    let best = current;
+    let bestPos = pos.slice();
+    let T = 2.0;
+    const cooling = Math.pow(0.01 / 2.0, 1 / iterations); // cool to ~0.01 over the run
+
+    for (let it = 0; it < iterations && best > 0; it++) {
+        const u = Math.floor(Math.random() * n);
+        let v = Math.floor(Math.random() * (n - 1));
+        if (v >= u) v++;
+
+        [pos[u], pos[v]] = [pos[v], pos[u]];
+        const candidate = countCrossings();
+        const delta = candidate - current;
+
+        if (delta <= 0 || Math.random() < Math.exp(-delta / T)) {
+            current = candidate;
+            if (current < best) {
+                best = current;
+                bestPos = pos.slice();
+            }
+        } else {
+            [pos[u], pos[v]] = [pos[v], pos[u]]; // revert
+        }
+        T *= cooling;
+    }
+
+    return bestPos;
 }
 
 /* Drag Functions - Move nodes */
@@ -2549,7 +2643,7 @@ function addGraph(edgesInput = null, nodes = null, inputName = null, directed = 
         .attr('target-id', d => `${arrowId}${d.target.id}`)
         .attr('fill', 'none')
         .attr('stroke', edgeColor)
-        .attr('stroke-width', 4)
+        .attr('stroke-width', 3)
         .on('mouseover', function () {
             handleEdgeMouseOver(this, edgeHoverColor, directed, svgElement);
         })
