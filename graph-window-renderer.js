@@ -2643,7 +2643,7 @@ function addGraph(edgesInput = null, nodes = null, inputName = null, directed = 
         .attr('target-id', d => `${arrowId}${d.target.id}`)
         .attr('fill', 'none')
         .attr('stroke', edgeColor)
-        .attr('stroke-width', 3)
+        .attr('stroke-width', 4)
         .on('mouseover', function () {
             handleEdgeMouseOver(this, edgeHoverColor, directed, svgElement);
         })
