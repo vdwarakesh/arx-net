@@ -837,6 +837,168 @@ function primMST(edges, weighted, graphName) {
     `;
 }
 
+function boruvkaMST(edges, weighted, graphName) {
+    const steps = [];
+
+    // Validation for unweighted graphs
+    if (!weighted) {
+        alert("Minimum Spanning Tree requires weighted edges, assuming all weights are 1.");
+    }
+
+    // Extract all unique vertices and format edges
+    const vertices = new Set();
+    const edgeList = [];
+
+    for (const { source, target, weight } of edges) {
+        vertices.add(source);
+        vertices.add(target);
+        const w = weight !== undefined ? weight : 1;
+        edgeList.push({ source, target, weight: w });
+    }
+
+    const nodes = Array.from(vertices);
+    if (nodes.length === 0) {
+        return null;
+    }
+
+    // Union-Find (Disjoint Set) Data Structure for cycle detection and merging
+    const parent = {};
+    const rank = {};
+
+    for (const node of nodes) {
+        parent[node] = node;
+        rank[node] = 0;
+    }
+
+    function find(i) {
+        if (parent[i] === i) return i;
+        return parent[i] = find(parent[i]); // Path compression
+    }
+
+    function union(i, j) {
+        const rootI = find(i);
+        const rootJ = find(j);
+        
+        if (rootI !== rootJ) {
+            if (rank[rootI] < rank[rootJ]) {
+                parent[rootI] = rootJ;
+            } else if (rank[rootI] > rank[rootJ]) {
+                parent[rootJ] = rootI;
+            } else {
+                parent[rootJ] = rootI;
+                rank[rootI]++;
+            }
+            return true;
+        }
+        return false;
+    }
+
+    let numTrees = nodes.length;
+    let totalCost = 0;
+    const mstEdges = [];
+    let phase = 1;
+
+    // Initialization
+    steps.push(`<li><strong>Initialization:</strong> Graph has ${numTrees} vertices. Each vertex starts as its own isolated component (tree).</li>`);
+
+    // Main Borůvka's Algorithm Loop
+    while (numTrees > 1) {
+        const cheapest = {}; // Stores the cheapest edge for each component root
+        let edgeAddedThisPhase = false;
+
+        steps.push(`<li><strong>Phase ${phase}:</strong> Finding the cheapest outgoing edge for each of the ${numTrees} remaining components.</li>`);
+        const phaseSteps = [];
+
+        // 1. Find the cheapest edge for each component
+        for (const edge of edgeList) {
+            const set1 = find(edge.source);
+            const set2 = find(edge.target);
+
+            // If they belong to different components (not a cycle)
+            if (set1 !== set2) {
+                if (!cheapest[set1] || cheapest[set1].weight > edge.weight) {
+                    cheapest[set1] = edge;
+                }
+                if (!cheapest[set2] || cheapest[set2].weight > edge.weight) {
+                    cheapest[set2] = edge;
+                }
+            }
+        }
+
+        // 2. Add the discovered cheapest edges to the MST
+        for (const node of nodes) {
+            const root = find(node);
+            const edge = cheapest[root];
+
+            if (edge) {
+                const set1 = find(edge.source);
+                const set2 = find(edge.target);
+
+                // Double check they haven't already been merged earlier in this phase
+                if (set1 !== set2) {
+                    mstEdges.push({ source: edge.source, target: edge.target, weight: edge.weight });
+                    totalCost += edge.weight;
+                    union(set1, set2);
+                    numTrees--;
+                    edgeAddedThisPhase = true;
+                    
+                    phaseSteps.push(`'${edge.source}' &rarr; '${edge.target}' (Cost: ${edge.weight}) merged components.`);
+                }
+            }
+        }
+
+        // Log the edges added in this phase
+        if (phaseSteps.length > 0) {
+            steps.push(`<li><span style="color: #5cb85c;"><strong>Added edges in Phase ${phase}:</strong></span><br><span style="color: gray; font-size: 0.9em;">&rarr; ${phaseSteps.join('<br>&rarr; ')}</span></li>`);
+        }
+
+        // Check for disconnected graphs
+        if (!edgeAddedThisPhase) {
+            steps.push(`<li><span style="color: #d9534f;"><strong>Termination Warning:</strong> No new edges could be added. The graph appears to be disconnected.</span></li>`);
+            break;
+        }
+
+        phase++;
+    }
+
+    steps.push(`<li><strong>Completion:</strong> Minimum Spanning Tree constructed with a total weight of <strong>${totalCost}</strong>.</li>`);
+
+    // Generate the Edge String
+    let mstResult = '';
+    for (const edge of mstEdges) {
+        mstResult += `(${edge.source},${edge.target},${edge.weight}),`;
+    }
+    if (mstResult.length > 0) {
+        mstResult = mstResult.slice(0, -1); // Remove trailing comma
+    }
+
+    let explanation = `<div style="font-family: system-ui, sans-serif; line-height: 1.5;">`;
+
+    explanation += `<h3 style="margin-bottom: 5px;">Methodology</h3>`;
+    explanation += `<p style="margin-top: 0;">This uses <strong>Borůvka's Algorithm</strong> to find the Minimum Spanning Tree (MST). Unlike Prim's (which grows one tree outwards) or Kruskal's (which evaluates edges sequentially), Borůvka's works in parallel phases. It starts by treating every single vertex as its own "tree". In each phase, every tree looks for the absolutely cheapest edge connecting it to a different tree. All these cheapest edges are then added to the MST simultaneously, merging the trees together. This guarantees the number of trees halves (or better) every phase until only one connected tree remains.</p>`;
+
+    explanation += `<h3 style="margin-bottom: 5px;">Time Complexity</h3>`;
+    explanation += `<p style="margin-top: 0;"><strong>O(E log V)</strong>, where V = number of Vertices and E = number of Edges. Because the number of distinct components is reduced by at least half in every phase, there are at most <em>O(log V)</em> phases. In each phase, we iterate through all <em>E</em> edges to find the cheapest connections.</p>`;
+
+    explanation += `<h3 style="margin-bottom: 5px;">Step-by-Step Traversal</h3>`;
+    explanation += `<ul style="margin-top: 0;">${steps.join('')}</ul>`;
+
+    explanation += `<h3 style="margin-bottom: 5px;">Distributed Nature & Tie-Breaking</h3>`;
+    explanation += `<p style="margin-top: 0;">Because this algorithm evaluates and adds edges in batches per phase, it is highly parallelizable and historically the oldest MST algorithm (designed in 1926 for constructing efficient electrical networks). When weights are tied, standard Borůvka's typically requires a strict tie-breaking rule (like comparing vertex indices) to prevent infinite loops or simultaneous circular additions. In this implementation, a Union-Find (Disjoint Set) cleanly ignores any edges that would form a cycle during the batch-merge step.</p>`;
+
+    explanation += `</div>`;
+
+    const safeExplanation = encodeURIComponent(explanation).replace(/'/g, "%27");
+
+    // Return the formatted result with the embedded link
+    return `
+        <strong>MST edges:</strong> ${mstResult || "None"} <br>
+        <strong>Total Cost:</strong> ${totalCost} 
+        <br>
+        <a href="javascript:void(0);" onclick="resultLog.innerHTML = decodeURIComponent('${safeExplanation}');" style="color: #ff8a65; text-decoration: underline; cursor: pointer;">[Explanation]</a>
+    `;
+}
+
 function topologicalSort(edges) {
     const graph = {};
     const inDegree = {};

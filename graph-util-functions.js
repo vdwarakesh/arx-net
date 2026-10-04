@@ -111,7 +111,7 @@ function handleAlgorithmClick(algorithm, container, svgElement, svg, nodes, edge
             break;
         }
         case 'mst': {
-            result = "Kruskal<hr>" + kruskalMST(edgesRaw,weighted,displayName) + "<br><br>Prim<hr>" + primMST(edgesRaw,weighted,displayName) + "<br>";
+            result = "Kruskal<hr>" + kruskalMST(edgesRaw,weighted,displayName) + "<br><br>Prim<hr>" + primMST(edgesRaw,weighted,displayName) + "<br><br>Boruvka<hr>" + boruvkaMST(edgesRaw,weighted,displayName) + "<br>";
             label = `Generated MST for ${displayName}. `;
 
             isMST = true;
@@ -122,8 +122,19 @@ function handleAlgorithmClick(algorithm, container, svgElement, svg, nodes, edge
             kruskals.style.textDecoration = "underline";
             kruskals.style.cursor = "pointer";
 
+            boruvkas = document.createElement("a");
+            boruvkas.href = "javascript:void(0)";
+            boruvkas.textContent = "[Visualize Boruvkas]";
+            boruvkas.style.color = "#ff8a65";
+            boruvkas.style.textDecoration = "underline";
+            boruvkas.style.cursor = "pointer";
+
             kruskals.onclick = () => {
-                visualizeMSTKruskal(displayName, container, nodes, edges, svg, arrowId);
+                visualizeMSTkruskal(displayName, container, nodes, edges, svg, arrowId);
+            };
+
+            boruvkas.onclick = () => {
+                visualizeMSTBoruvka(displayName, container, nodes, edges, svg, arrowId);
             };
 
             av.textContent = "[Visualize Prim]"
@@ -219,6 +230,7 @@ function handleAlgorithmClick(algorithm, container, svgElement, svg, nodes, edge
             const tn = document.createTextNode(" ");
             resultContainer.append(tn);
             resultContainer.append(kruskals);
+            resultContainer.append(boruvkas);
         } else if (isSCC) {
             const tn = document.createTextNode(" ");
             resultContainer.append(tn);
